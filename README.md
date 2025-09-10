@@ -1,1 +1,0 @@
-# Nokia-Challenge_Sarthak
