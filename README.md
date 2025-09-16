@@ -8,7 +8,7 @@
 [![Next.js](https://img.shields.io/badge/Next.js-13.5-black.svg)](https://nextjs.org)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.2-blue.svg)](https://www.typescriptlang.org)
 
-## 🌟 Overview
+## Overview
 
 FraudShield is a comprehensive fraud detection and prevention platform specifically designed for India's growing fintech sector. Built for the Nokia Network-as-Code Challenge, it leverages cutting-edge network intelligence to provide real-time fraud detection, user verification, and comprehensive risk analysis.
 
