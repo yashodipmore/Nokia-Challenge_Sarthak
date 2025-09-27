@@ -1,26 +1,32 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { 
-  Home, History, Settings, Bell, Shield, AlertTriangle, 
-  CheckCircle, Moon, Sun, Menu, X, BarChart3, Users, Activity,
-  Download, Search, Plus, RefreshCw, Eye, MoreHorizontal,
-  Clock, Phone, Mail, MapPin, Building, CreditCard,
-  UserCheck, UserX, AlertCircle, Calendar, Filter,
-  LogOut, User, HelpCircle, FileText, Ban, CheckCircle2
-} from 'lucide-react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Progress } from '@/components/ui/progress';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { toast } from '@/hooks/use-toast';
 import * as XLSX from 'xlsx';
-
-// TypeScript interfaces
+import { 
+  Card, CardContent, CardHeader, CardTitle, CardDescription 
+} from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Progress } from "@/components/ui/progress";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { toast } from "@/hooks/use-toast";
+import {
+  Shield, Home, BarChart3, History, Bell, Settings, Users,
+  FileText, CheckCircle2, AlertTriangle, Clock, Search,
+  RefreshCw, Download, UserCheck, UserX, Ban,
+  Mail, Phone, MapPin, Building, CreditCard, Calendar,
+  CheckCircle, AlertCircle, Menu, X, Sun, Moon,
+  LogOut, HelpCircle
+} from 'lucide-react';
 interface UserApplication {
   applicationId: string;
   fullName: string;
