@@ -414,13 +414,453 @@ export const adminUtils = {
   },
 };
 
-// Export all APIs as a single object for convenience
-export const adminAPI = {
+// Note: adminAPI is exported at the end of the file as comprehensiveAdminAPI
+
+// ===============================
+// ENHANCED APPLICATION MANAGEMENT APIS
+// ===============================
+
+// Get application statistics
+export const getApplicationStatistics = async (): Promise<APIResponse<{
+  total: number;
+  recent: number;
+  byStatus: Record<string, { count: number; totalAmount: number }>;
+}>> => {
+  return apiCall<APIResponse<{
+    total: number;
+    recent: number;
+    byStatus: Record<string, { count: number; totalAmount: number }>;
+  }>>('/applications/admin/stats');
+};
+
+// ===============================
+// REPORTING & ANALYTICS APIs
+// ===============================
+
+export interface ReportParams {
+  reportType: 'applications' | 'users' | 'loans' | 'risk';
+  dateRange?: {
+    startDate: string;
+    endDate: string;
+  };
+  filters?: {
+    status?: string[];
+    loanTypes?: string[];
+    riskLevels?: string[];
+  };
+  format?: 'pdf' | 'excel' | 'csv';
+}
+
+export const reportingAPI = {
+  // Generate report
+  generateReport: async (params: ReportParams): Promise<APIResponse<{ 
+    reportId: string; 
+    status: 'generating' | 'completed' | 'failed';
+    downloadUrl?: string;
+  }>> => {
+    return apiCall<APIResponse<{ 
+      reportId: string; 
+      status: 'generating' | 'completed' | 'failed';
+      downloadUrl?: string;
+    }>>('/admin/reports/generate', {
+      method: 'POST',
+      body: JSON.stringify(params),
+    });
+  },
+
+  // Get report status
+  getReportStatus: async (reportId: string): Promise<APIResponse<{
+    reportId: string;
+    status: 'generating' | 'completed' | 'failed';
+    downloadUrl?: string;
+    generatedAt?: string;
+  }>> => {
+    return apiCall<APIResponse<{
+      reportId: string;
+      status: 'generating' | 'completed' | 'failed';
+      downloadUrl?: string;
+      generatedAt?: string;
+    }>>(`/admin/reports/${reportId}`);
+  },
+
+  // Download report
+  downloadReport: async (reportId: string): Promise<Blob> => {
+    const response = await fetch(`${API_BASE_URL}/admin/reports/${reportId}/download`, {
+      method: 'GET',
+      headers: getAuthHeaders(),
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to download report');
+    }
+
+    return response.blob();
+  }
+};
+
+// ===============================
+// ENHANCED USER MANAGEMENT APIs
+// ===============================
+
+export const enhancedUserAPI = {
+  // Get user activity logs
+  getUserActivity: async (userId: string, params?: PaginationParams): Promise<APIResponse<{
+    activities: Array<{
+      action: string;
+      timestamp: string;
+      details: string;
+      ipAddress?: string;
+    }>;
+    pagination: {
+      current: number;
+      pages: number;
+      total: number;
+    };
+  }>> => {
+    const queryParams = new URLSearchParams();
+    if (params?.page) queryParams.append('page', params.page.toString());
+    if (params?.limit) queryParams.append('limit', params.limit.toString());
+
+    return apiCall<APIResponse<{
+      activities: Array<{
+        action: string;
+        timestamp: string;
+        details: string;
+        ipAddress?: string;
+      }>;
+      pagination: {
+        current: number;
+        pages: number;
+        total: number;
+      };
+    }>>(`/admin/users/${userId}/activity${queryParams.toString() ? '?' + queryParams.toString() : ''}`);
+  },
+
+  // Update user status
+  updateUserStatus: async (userId: string, isActive: boolean, reason?: string): Promise<APIResponse<{ user: User }>> => {
+    return apiCall<APIResponse<{ user: User }>>(`/admin/users/${userId}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ isActive, reason }),
+    });
+  },
+
+  // Send notification to user
+  sendNotification: async (userId: string, notification: {
+    title: string;
+    message: string;
+    type: 'info' | 'warning' | 'success' | 'error';
+    channels: ('email' | 'sms' | 'push')[];
+  }): Promise<APIResponse<{ sent: boolean }>> => {
+    return apiCall<APIResponse<{ sent: boolean }>>(`/admin/users/${userId}/notify`, {
+      method: 'POST',
+      body: JSON.stringify(notification),
+    });
+  }
+};
+
+// ===============================
+// LOAN MANAGEMENT APIs
+// ===============================
+
+export interface LoanProduct {
+  id: string;
+  name: string;
+  type: 'personal' | 'business' | 'education' | 'home' | 'vehicle';
+  minAmount: number;
+  maxAmount: number;
+  interestRate: {
+    min: number;
+    max: number;
+    type: 'fixed' | 'variable';
+  };
+  tenure: {
+    min: number; // months
+    max: number; // months
+  };
+  eligibility: {
+    minAge: number;
+    maxAge: number;
+    minIncome: number;
+    requiredDocuments: string[];
+  };
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const loanProductsAPI = {
+  // Get all loan products
+  getAllLoanProducts: async (): Promise<APIResponse<{ loanProducts: LoanProduct[] }>> => {
+    return apiCall<APIResponse<{ loanProducts: LoanProduct[] }>>('/admin/loan-products');
+  },
+
+  // Create loan product
+  createLoanProduct: async (product: Omit<LoanProduct, 'id' | 'createdAt' | 'updatedAt'>): Promise<APIResponse<{ loanProduct: LoanProduct }>> => {
+    return apiCall<APIResponse<{ loanProduct: LoanProduct }>>('/admin/loan-products', {
+      method: 'POST',
+      body: JSON.stringify(product),
+    });
+  },
+
+  // Update loan product
+  updateLoanProduct: async (productId: string, updates: Partial<LoanProduct>): Promise<APIResponse<{ loanProduct: LoanProduct }>> => {
+    return apiCall<APIResponse<{ loanProduct: LoanProduct }>>(`/admin/loan-products/${productId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(updates),
+    });
+  },
+
+  // Delete loan product
+  deleteLoanProduct: async (productId: string): Promise<APIResponse<{ success: boolean }>> => {
+    return apiCall<APIResponse<{ success: boolean }>>(`/admin/loan-products/${productId}`, {
+      method: 'DELETE',
+    });
+  }
+};
+
+// ===============================
+// SYSTEM SETTINGS APIs
+// ===============================
+
+export interface SystemSettings {
+  general: {
+    companyName: string;
+    supportEmail: string;
+    supportPhone: string;
+    timezone: string;
+    dateFormat: string;
+    currency: string;
+  };
+  loan: {
+    defaultInterestRate: number;
+    maxLoanAmount: number;
+    minCreditScore: number;
+    autoApprovalThreshold: number;
+  };
+  notifications: {
+    emailEnabled: boolean;
+    smsEnabled: boolean;
+    pushEnabled: boolean;
+    adminNotifications: boolean;
+  };
+  security: {
+    sessionTimeout: number; // minutes
+    maxLoginAttempts: number;
+    passwordExpiryDays: number;
+    twoFactorEnabled: boolean;
+  };
+}
+
+export const systemSettingsAPI = {
+  // Get system settings
+  getSettings: async (): Promise<APIResponse<{ settings: SystemSettings }>> => {
+    return apiCall<APIResponse<{ settings: SystemSettings }>>('/admin/settings');
+  },
+
+  // Update system settings
+  updateSettings: async (settings: Partial<SystemSettings>): Promise<APIResponse<{ settings: SystemSettings }>> => {
+    return apiCall<APIResponse<{ settings: SystemSettings }>>('/admin/settings', {
+      method: 'PATCH',
+      body: JSON.stringify(settings),
+    });
+  },
+
+  // Get audit logs
+  getAuditLogs: async (params?: PaginationParams & {
+    action?: string;
+    adminId?: string;
+    startDate?: string;
+    endDate?: string;
+  }): Promise<APIResponse<{
+    logs: Array<{
+      id: string;
+      adminId: string;
+      adminName: string;
+      action: string;
+      resource: string;
+      resourceId?: string;
+      details: any;
+      timestamp: string;
+      ipAddress: string;
+    }>;
+    pagination: {
+      current: number;
+      pages: number;
+      total: number;
+    };
+  }>> => {
+    const queryParams = new URLSearchParams();
+    Object.entries(params || {}).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== '') {
+        queryParams.append(key, value.toString());
+      }
+    });
+
+    return apiCall<APIResponse<{
+      logs: Array<{
+        id: string;
+        adminId: string;
+        adminName: string;
+        action: string;
+        resource: string;
+        resourceId?: string;
+        details: any;
+        timestamp: string;
+        ipAddress: string;
+      }>;
+      pagination: {
+        current: number;
+        pages: number;
+        total: number;
+      };
+    }>>(`/admin/audit-logs${queryParams.toString() ? '?' + queryParams.toString() : ''}`);
+  }
+};
+
+// ===============================
+// BULK OPERATIONS APIs  
+// ===============================
+
+export interface BulkOperationResult {
+  totalProcessed: number;
+  successful: number;
+  failed: number;
+  errors: Array<{
+    id: string;
+    error: string;
+  }>;
+}
+
+export const bulkOperationsAPI = {
+  // Bulk approve applications
+  bulkApproveApplications: async (
+    applicationIds: string[],
+    approvalData: {
+      reason: string;
+      approvedAmount?: number;
+      comments?: string;
+    }
+  ): Promise<APIResponse<BulkOperationResult>> => {
+    return apiCall<APIResponse<BulkOperationResult>>('/admin/applications/bulk-approve', {
+      method: 'POST',
+      body: JSON.stringify({ applicationIds, ...approvalData }),
+    });
+  },
+
+  // Bulk reject applications
+  bulkRejectApplications: async (
+    applicationIds: string[],
+    rejectionData: {
+      reason: string;
+      comments?: string;
+    }
+  ): Promise<APIResponse<BulkOperationResult>> => {
+    return apiCall<APIResponse<BulkOperationResult>>('/admin/applications/bulk-reject', {
+      method: 'POST',
+      body: JSON.stringify({ applicationIds, ...rejectionData }),
+    });
+  },
+
+  // Bulk update user status
+  bulkUpdateUserStatus: async (
+    userIds: string[],
+    statusData: {
+      isActive: boolean;
+      reason?: string;
+    }
+  ): Promise<APIResponse<BulkOperationResult>> => {
+    return apiCall<APIResponse<BulkOperationResult>>('/admin/users/bulk-update-status', {
+      method: 'POST',
+      body: JSON.stringify({ userIds, ...statusData }),
+    });
+  }
+};
+
+// ===============================
+// ANALYTICS & REPORTING APIS  
+// ===============================
+
+export interface AnalyticsData {
+  loanPerformance: {
+    approvalRate: number;
+    averageLoanAmount: number;
+    totalDisbursed: number;
+    monthlyTrends: Array<{
+      month: string;
+      applications: number;
+      approvals: number;
+      rejections: number;
+      amount: number;
+    }>;
+  };
+  userAnalytics: {
+    newUsers: number;
+    activeUsers: number;
+    userGrowth: number;
+    demographics: {
+      ageGroups: Record<string, number>;
+      locations: Record<string, number>;
+    };
+  };
+  riskAnalytics: {
+    riskDistribution: Record<string, number>;
+    defaultPredictions: Array<{
+      applicationId: string;
+      riskScore: number;
+      factors: string[];
+    }>;
+  };
+}
+
+export const analyticsAPI = {
+  // Get comprehensive analytics
+  getAnalytics: async (timeRange?: '7d' | '30d' | '90d' | '1y'): Promise<APIResponse<AnalyticsData>> => {
+    const params = new URLSearchParams();
+    if (timeRange) params.append('range', timeRange);
+    
+    return apiCall<APIResponse<AnalyticsData>>(
+      `/admin/analytics${params.toString() ? '?' + params.toString() : ''}`
+    );
+  },
+
+  // Get loan performance metrics  
+  getLoanPerformance: async (): Promise<APIResponse<AnalyticsData['loanPerformance']>> => {
+    return apiCall<APIResponse<AnalyticsData['loanPerformance']>>('/admin/analytics/loans');
+  },
+
+  // Get user analytics
+  getUserAnalytics: async (): Promise<APIResponse<AnalyticsData['userAnalytics']>> => {
+    return apiCall<APIResponse<AnalyticsData['userAnalytics']>>('/admin/analytics/users');
+  },
+
+  // Get risk analytics
+  getRiskAnalytics: async (): Promise<APIResponse<AnalyticsData['riskAnalytics']>> => {
+    return apiCall<APIResponse<AnalyticsData['riskAnalytics']>>('/admin/analytics/risk');
+  }
+};
+
+// Export all APIs as a comprehensive admin API object
+export const comprehensiveAdminAPI = {
+  // Core APIs
   auth: adminAuthAPI,
   users: userManagementAPI,
   applications: applicationManagementAPI,
   dashboard: dashboardAPI,
   utils: adminUtils,
+  
+  // Enhanced APIs
+  analytics: analyticsAPI,
+  reporting: reportingAPI,
+  enhancedUsers: enhancedUserAPI,
+  loanProducts: loanProductsAPI,
+  settings: systemSettingsAPI,
+  bulkOperations: bulkOperationsAPI,
+  
+  // Additional utility functions
+  getApplicationStatistics
 };
 
-export default adminAPI;
+// Update the main export
+export const adminAPI = comprehensiveAdminAPI;
+
+export default comprehensiveAdminAPI;
