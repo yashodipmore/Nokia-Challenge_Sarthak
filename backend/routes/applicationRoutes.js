@@ -17,7 +17,7 @@ router.post("/submit", authenticateUser, submitApplication);
 router.get("/my-applications", authenticateUser, getUserApplications);
 router.get("/my-application/:applicationId", authenticateUser, getApplicationById);
 
-// Admin routes
+// Admin routes - Fixed path to match frontend expectations
 router.get("/admin/all", 
   authenticateAdmin, 
   checkPermission('view_applications'), 

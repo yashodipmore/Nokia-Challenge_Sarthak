@@ -283,7 +283,7 @@ export const applicationManagementAPI = {
     if (params.limit) queryParams.append('limit', params.limit.toString());
     if (params.status) queryParams.append('status', params.status);
 
-    const endpoint = `/admin/applications/admin/all${queryParams.toString() ? '?' + queryParams.toString() : ''}`;
+    const endpoint = `/applications/admin/all${queryParams.toString() ? '?' + queryParams.toString() : ''}`;
     return apiCall<APIResponse<{
       applications: LoanApplication[];
       pagination: {
@@ -415,6 +415,52 @@ export const adminUtils = {
 };
 
 // Note: adminAPI is exported at the end of the file as comprehensiveAdminAPI
+
+// ===============================
+// CORE ADMIN APIS (Based on Backend Documentation)
+// ===============================
+
+// Get all applications (admin) - matches backend documentation
+export const getAllApplicationsAdmin = async (params?: {
+  status?: string;
+  page?: number;
+  limit?: number;
+}): Promise<APIResponse<{
+  applications: LoanApplication[];
+  pagination: {
+    current: number;
+    pages: number;
+    total: number;
+  };
+}>> => {
+  const queryParams = new URLSearchParams();
+  if (params?.status) queryParams.append('status', params.status);
+  if (params?.page) queryParams.append('page', params.page.toString());
+  if (params?.limit) queryParams.append('limit', params.limit.toString());
+
+  const endpoint = `/applications/admin/all${queryParams.toString() ? '?' + queryParams.toString() : ''}`;
+  return apiCall<APIResponse<{
+    applications: LoanApplication[];
+    pagination: {
+      current: number;
+      pages: number;
+      total: number;
+    };
+  }>>(endpoint);
+};
+
+// Update the main export to only include documented APIs
+export const adminAPI = {
+  // Core APIs from documentation
+  auth: adminAuthAPI,
+  users: userManagementAPI, 
+  applications: {
+    ...applicationManagementAPI,
+    getAllAdmin: getAllApplicationsAdmin // Add the corrected function
+  },
+  dashboard: dashboardAPI,
+  utils: adminUtils,
+};
 
 // ===============================
 // ENHANCED APPLICATION MANAGEMENT APIS
@@ -839,28 +885,4 @@ export const analyticsAPI = {
   }
 };
 
-// Export all APIs as a comprehensive admin API object
-export const comprehensiveAdminAPI = {
-  // Core APIs
-  auth: adminAuthAPI,
-  users: userManagementAPI,
-  applications: applicationManagementAPI,
-  dashboard: dashboardAPI,
-  utils: adminUtils,
-  
-  // Enhanced APIs
-  analytics: analyticsAPI,
-  reporting: reportingAPI,
-  enhancedUsers: enhancedUserAPI,
-  loanProducts: loanProductsAPI,
-  settings: systemSettingsAPI,
-  bulkOperations: bulkOperationsAPI,
-  
-  // Additional utility functions
-  getApplicationStatistics
-};
-
-// Update the main export
-export const adminAPI = comprehensiveAdminAPI;
-
-export default comprehensiveAdminAPI;
+export default adminAPI;
