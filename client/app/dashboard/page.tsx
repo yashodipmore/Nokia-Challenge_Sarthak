@@ -3,6 +3,8 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import * as XLSX from 'xlsx';
+import { adminAPI } from '@/lib/api/admin';
+import { useToast } from '@/hooks/use-toast';
 import { 
   Card, CardContent, CardHeader, CardTitle, CardDescription 
 } from "@/components/ui/card";
@@ -28,68 +30,137 @@ import {
   LogOut, HelpCircle
 } from 'lucide-react';
 interface UserApplication {
-  applicationId: string;
-  fullName: string;
-  email: string;
-  phoneNumber: string;
-  aadhaarNumber: string;
-  panNumber: string;
-  applicationType: string;
-  applicationAmount: string;
-  monthlyIncome: string;
-  employmentType: string;
-  submittedAt: string;
-  status: 'pending' | 'approved' | 'rejected' | 'under_review';
-  fraudScore: number;
-  riskLevel: 'low' | 'medium' | 'high' | 'critical';
-  verificationStatus: {
-    identity: boolean;
-    address: boolean;
-    income: boolean;
-    documents: boolean;
-  };
-  city: string;
-  state: string;
-  companyName: string;
-  creditScore: string;
-  currentAddress: string;
-  bankName: string;
-  purpose: string;
+_id: string;
+applicationId: string;
+userId: {
+name: string;
+email: string;
+};
+loanAmount: number;
+loanType: string;
+purpose: string;
+fullName: string;
+phoneNumber: string;
+email: string;
+dateOfBirth: string;
+monthlyIncome: number;
+address: {
+street: string;
+city: string;
+state: string;
+pincode: string;
+country: string;
+};
+status: 'pending' | 'approved' | 'rejected';
+reviewedBy?: string;
+reviewedAt?: string;
+reason?: string;
+approvedAmount?: number;
+comments?: string;
+createdAt: string;
+// Fraud analysis fields (calculated client-side)
+fraudScore: number;
+riskLevel: 'low' | 'medium' | 'high' | 'critical';
+verificationStatus: {
+identity: boolean;
+address: boolean;
+income: boolean;
+documents: boolean;
+};
 }
 
 export default function Dashboard() {
-  const router = useRouter();
-  const [activeTab, setActiveTab] = useState('home');
-  const [mounted, setMounted] = useState(false);
-  const [isDarkMode, setIsDarkMode] = useState(false);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [applications, setApplications] = useState<UserApplication[]>([]);
-  const [filteredApplications, setFilteredApplications] = useState<UserApplication[]>([]);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all');
-  const [riskFilter, setRiskFilter] = useState('all');
-  const [currentTime, setCurrentTime] = useState(new Date());
+const router = useRouter();
+const [activeTab, setActiveTab] = useState('home');
+const [mounted, setMounted] = useState(false);
+const [isDarkMode, setIsDarkMode] = useState(false);
+const [sidebarOpen, setSidebarOpen] = useState(true);
+const [applications, setApplications] = useState<UserApplication[]>([]);
+const [filteredApplications, setFilteredApplications] = useState<UserApplication[]>([]);
+const [searchTerm, setSearchTerm] = useState('');
+const [statusFilter, setStatusFilter] = useState('all');
+const [riskFilter, setRiskFilter] = useState('all');
+const [currentTime, setCurrentTime] = useState(new Date());
+const [isLoading, setIsLoading] = useState(true);
+const [stats, setStats] = useState({
+total: 0,
+approved: 0,
+pending: 0,
+rejected: 0,
+highRisk: 0
+});
+const { toast } = useToast();
 
   // Generate fraud analysis for applications
   const generateFraudAnalysis = (app: any): UserApplication => {
-    const fraudScore = Math.floor(Math.random() * 100);
-    let riskLevel: 'low' | 'medium' | 'high' | 'critical' = 'low';
+  // Calculate fraud score based on application data
+  let fraudScore = 0;
     
-    if (fraudScore >= 80) riskLevel = 'critical';
-    else if (fraudScore >= 60) riskLevel = 'high';
-    else if (fraudScore >= 30) riskLevel = 'medium';
+  // Income to loan ratio
+  const incomeToLoanRatio = app.loanAmount / (app.monthlyIncome * 12);
+  if (incomeToLoanRatio > 5) fraudScore += 30;
+  else if (incomeToLoanRatio > 3) fraudScore += 20;
+  else if (incomeToLoanRatio > 2) fraudScore += 10;
     
-    return {
-      ...app,
-      fraudScore,
-      riskLevel,
-      verificationStatus: {
-        identity: Math.random() > 0.2,
-        address: Math.random() > 0.3,
-        income: Math.random() > 0.4,
-        documents: Math.random() > 0.1
-      }
-    };
+  // Loan amount risk
+  if (app.loanAmount > 2000000) fraudScore += 20;
+  else if (app.loanAmount > 1000000) fraudScore += 15;
+  else if (app.loanAmount > 500000) fraudScore += 10;
+    
+  // Random factors for simulation
+  fraudScore += Math.floor(Math.random() * 40);
+    
+  let riskLevel: 'low' | 'medium' | 'high' | 'critical' = 'low';
+  if (fraudScore >= 80) riskLevel = 'critical';
+  else if (fraudScore >= 60) riskLevel = 'high';
+  else if (fraudScore >= 30) riskLevel = 'medium';
+    
+  return {
+  ...app,
+  fraudScore: Math.min(fraudScore, 100),
+  riskLevel,
+  verificationStatus: {
+  identity: Math.random() > 0.2,
+  address: Math.random() > 0.3,
+  income: Math.random() > 0.4,
+  documents: Math.random() > 0.1
+  }
+  };
+  };
+
+  // Fetch applications from backend
+  const fetchApplications = async () => {
+  try {
+  setIsLoading(true);
+  const response = await adminAPI.applications.getAllApplications({
+  page: 1,
+  limit: 50 // Get more applications for the dashboard
+  });
+
+  if (response.success && response.data) {
+  const analyzedApplications = response.data.applications.map(generateFraudAnalysis);
+  setApplications(analyzedApplications);
+        
+  // Update stats
+  const newStats = {
+  total: analyzedApplications.length,
+  approved: analyzedApplications.filter(app => app.status === 'approved').length,
+  pending: analyzedApplications.filter(app => app.status === 'pending').length,
+  rejected: analyzedApplications.filter(app => app.status === 'rejected').length,
+  highRisk: analyzedApplications.filter(app => app.riskLevel === 'high' || app.riskLevel === 'critical').length
+  };
+  setStats(newStats);
+  }
+  } catch (error: any) {
+  console.error('Error fetching applications:', error);
+  toast({
+  title: "Error Loading Applications",
+  description: error.message || "Failed to load applications",
+  variant: "destructive",
+  });
+  } finally {
+  setIsLoading(false);
+  }
   };
 
   // Function handlers
@@ -104,34 +175,34 @@ export default function Dashboard() {
   };
 
   const handleExportToExcel = () => {
-    try {
-      const exportData = filteredApplications.map(app => ({
-        'Application ID': app.applicationId,
-        'Full Name': app.fullName,
-        'Email': app.email,
-        'Phone': app.phoneNumber,
-        'Aadhaar': app.aadhaarNumber,
-        'PAN': app.panNumber,
-        'Application Type': app.applicationType,
-        'Amount': app.applicationAmount,
-        'Monthly Income': app.monthlyIncome,
-        'Employment': app.employmentType,
-        'City': app.city,
-        'State': app.state,
-        'Company': app.companyName,
-        'Credit Score': app.creditScore,
-        'Status': app.status,
-        'Fraud Score': app.fraudScore,
-        'Risk Level': app.riskLevel,
-        'Identity Verified': app.verificationStatus.identity ? 'Yes' : 'No',
-        'Address Verified': app.verificationStatus.address ? 'Yes' : 'No',
-        'Income Verified': app.verificationStatus.income ? 'Yes' : 'No',
-        'Documents Verified': app.verificationStatus.documents ? 'Yes' : 'No',
-        'Purpose': app.purpose,
-        'Bank Name': app.bankName,
-        'Address': app.currentAddress,
-        'Submitted Date': new Date(app.submittedAt).toLocaleDateString()
-      }));
+  try {
+  const exportData = filteredApplications.map(app => ({
+  'Application ID': app.applicationId,
+  'Full Name': app.fullName,
+  'Email': app.email,
+  'Phone': app.phoneNumber,
+  'Date of Birth': app.dateOfBirth,
+  'Loan Type': app.loanType,
+  'Loan Amount': app.loanAmount,
+  'Monthly Income': app.monthlyIncome,
+  'Purpose': app.purpose,
+  'City': app.address?.city || '',
+  'State': app.address?.state || '',
+  'Pincode': app.address?.pincode || '',
+  'Status': app.status,
+  'Fraud Score': app.fraudScore,
+  'Risk Level': app.riskLevel,
+  'Identity Verified': app.verificationStatus.identity ? 'Yes' : 'No',
+  'Address Verified': app.verificationStatus.address ? 'Yes' : 'No',
+  'Income Verified': app.verificationStatus.income ? 'Yes' : 'No',
+  'Documents Verified': app.verificationStatus.documents ? 'Yes' : 'No',
+  'Reviewed By': app.reviewedBy || '',
+  'Approved Amount': app.approvedAmount || '',
+  'Reason': app.reason || '',
+  'Comments': app.comments || '',
+  'Submitted Date': new Date(app.createdAt).toLocaleDateString(),
+  'Reviewed Date': app.reviewedAt ? new Date(app.reviewedAt).toLocaleDateString() : ''
+  }));
 
       const worksheet = XLSX.utils.json_to_sheet(exportData);
       const workbook = XLSX.utils.book_new();
@@ -153,229 +224,161 @@ export default function Dashboard() {
     }
   };
 
-  const handleRefresh = () => {
-    const storedApplications = JSON.parse(localStorage.getItem('fraudDetectionApplications') || '[]');
-    const analyzedApplications = storedApplications.map(generateFraudAnalysis);
-    setApplications(analyzedApplications);
-    toast({
-      title: "Data Refreshed",
-      description: "Latest application data loaded.",
-    });
+  const handleRefresh = async () => {
+  await fetchApplications();
+  toast({
+  title: "Data Refreshed",
+  description: "Latest application data loaded from server.",
+  });
   };
 
-  const handleApproveApplication = (appId: string) => {
-    setApplications(prev => prev.map(app => 
-      app.applicationId === appId ? { ...app, status: 'approved' as const } : app
-    ));
-    toast({
-      title: "Application Approved",
-      description: "User has been verified and approved.",
-    });
+  const handleApproveApplication = async (appId: string) => {
+  try {
+  const application = applications.find(app => app.applicationId === appId);
+  if (!application) return;
+
+  await adminAPI.applications.updateApplicationStatus(application._id, {
+  decision: 'approved',
+  reason: 'Application approved through fraud detection dashboard',
+  approvedAmount: application.loanAmount,
+  comments: 'Verified and approved by fraud detection system'
+  });
+
+  // Update local state
+  setApplications(prev => prev.map(app =>
+  app.applicationId === appId ? { ...app, status: 'approved' as const } : app
+  ));
+
+  toast({
+  title: "Application Approved",
+  description: "User has been verified and approved successfully.",
+  });
+  } catch (error: any) {
+  toast({
+  title: "Error Approving Application",
+  description: error.message || "Failed to approve application",
+  variant: "destructive",
+  });
+  }
   };
 
-  const handleRejectApplication = (appId: string) => {
-    setApplications(prev => prev.map(app => 
-      app.applicationId === appId ? { ...app, status: 'rejected' as const } : app
-    ));
-    toast({
-      title: "Application Rejected",
-      description: "User has been flagged and rejected.",
-    });
+  const handleRejectApplication = async (appId: string) => {
+  try {
+  const application = applications.find(app => app.applicationId === appId);
+  if (!application) return;
+
+  await adminAPI.applications.updateApplicationStatus(application._id, {
+  decision: 'rejected',
+  reason: 'Application rejected due to fraud detection analysis',
+  comments: `High fraud risk score: ${application.fraudScore}/100`
+  });
+
+  // Update local state
+  setApplications(prev => prev.map(app =>
+  app.applicationId === appId ? { ...app, status: 'rejected' as const } : app
+  ));
+
+  toast({
+  title: "Application Rejected",
+  description: "User application has been rejected.",
+  });
+  } catch (error: any) {
+  toast({
+  title: "Error Rejecting Application",
+  description: error.message || "Failed to reject application",
+  variant: "destructive",
+  });
+  }
   };
 
-  const handleBlockUser = (appId: string) => {
-    setApplications(prev => prev.map(app => 
-      app.applicationId === appId ? { ...app, status: 'rejected' as const } : app
-    ));
-    toast({
-      title: "User Blocked",
-      description: "User account has been blocked for fraudulent activity.",
-      variant: "destructive"
-    });
+  const handleBlockUser = async (appId: string) => {
+  try {
+  const application = applications.find(app => app.applicationId === appId);
+  if (!application) return;
+
+  await adminAPI.applications.updateApplicationStatus(application._id, {
+  decision: 'rejected',
+  reason: 'User blocked due to high fraud risk',
+  comments: `Critical fraud risk detected: ${application.fraudScore}/100. User account flagged.`
+  });
+
+  // Update local state
+  setApplications(prev => prev.map(app =>
+  app.applicationId === appId ? { ...app, status: 'rejected' as const } : app
+  ));
+
+  toast({
+  title: "User Blocked",
+  description: "User account has been blocked for fraudulent activity.",
+  variant: "destructive"
+  });
+  } catch (error: any) {
+  toast({
+  title: "Error Blocking User",
+  description: error.message || "Failed to block user",
+  variant: "destructive",
+  });
+  }
   };
 
   // Filter applications
   useEffect(() => {
-    let filtered = applications;
+  let filtered = applications;
     
-    if (searchTerm) {
-      filtered = filtered.filter(app => 
-        app.fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        app.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        app.phoneNumber.includes(searchTerm) ||
-        app.applicationId.toLowerCase().includes(searchTerm.toLowerCase())
-      );
-    }
+  if (searchTerm) {
+  filtered = filtered.filter(app =>
+  app.fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+  app.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+  app.phoneNumber.includes(searchTerm) ||
+  app.applicationId.toLowerCase().includes(searchTerm.toLowerCase()) ||
+  app.loanType.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+  }
     
-    if (statusFilter !== 'all') {
-      filtered = filtered.filter(app => app.status === statusFilter);
-    }
+  if (statusFilter !== 'all') {
+  filtered = filtered.filter(app => app.status === statusFilter);
+  }
     
-    if (riskFilter !== 'all') {
-      filtered = filtered.filter(app => app.riskLevel === riskFilter);
-    }
+  if (riskFilter !== 'all') {
+  filtered = filtered.filter(app => app.riskLevel === riskFilter);
+  }
     
-    setFilteredApplications(filtered);
+  setFilteredApplications(filtered);
   }, [applications, searchTerm, statusFilter, riskFilter]);
 
   useEffect(() => {
-    setMounted(true);
+  setMounted(true);
     
-    // Generate mock applications for testing
-    const mockApplications = [
-      {
-        applicationId: `APP${Date.now() - 86400000}`,
-        fullName: 'Rajesh Kumar Sharma',
-        email: 'rajesh.sharma@gmail.com',
-        phoneNumber: '+91 9876543210',
-        alternatePhone: '+91 8765432109',
-        dateOfBirth: '1985-03-15',
-        gender: 'male',
-        aadhaarNumber: '1234 5678 9012',
-        panNumber: 'ABCDE1234F',
-        currentAddress: '123, MG Road, Sector 14, Gurgaon, Haryana',
-        permanentAddress: '456, Village Khandsa, Gurgaon, Haryana',
-        city: 'Gurgaon',
-        state: 'Haryana',
-        pincode: '122001',
-        applicationType: 'personal_loan',
-        applicationAmount: '500000',
-        purpose: 'Home renovation and furniture purchase',
-        employmentType: 'salaried',
-        companyName: 'Infosys Technologies Ltd',
-        designation: 'Senior Software Engineer',
-        monthlyIncome: '85000',
-        workExperience: '8',
-        bankAccountNumber: '1234567890123456',
-        ifscCode: 'HDFC0001234',
-        bankName: 'HDFC Bank',
-        existingLoans: 'Car loan EMI: Rs 15,000/month',
-        creditScore: '750',
-        submittedAt: new Date(Date.now() - 86400000).toISOString(),
-        status: 'pending'
-      },
-      {
-        applicationId: `APP${Date.now() - 172800000}`,
-        fullName: 'Priya Patel',
-        email: 'priya.patel@yahoo.com',
-        phoneNumber: '+91 9123456789',
-        alternatePhone: '',
-        dateOfBirth: '1990-07-22',
-        gender: 'female',
-        aadhaarNumber: '2345 6789 0123',
-        panNumber: 'FGHIJ5678K',
-        currentAddress: '789, Satellite Road, Ahmedabad, Gujarat',
-        permanentAddress: '789, Satellite Road, Ahmedabad, Gujarat',
-        city: 'Ahmedabad',
-        state: 'Gujarat',
-        pincode: '380015',
-        applicationType: 'business_loan',
-        applicationAmount: '1200000',
-        purpose: 'Expanding textile business and purchasing new machinery',
-        employmentType: 'business_owner',
-        companyName: 'Patel Textiles Pvt Ltd',
-        designation: 'Managing Director',
-        monthlyIncome: '150000',
-        workExperience: '5',
-        bankAccountNumber: '2345678901234567',
-        ifscCode: 'ICIC0002345',
-        bankName: 'ICICI Bank',
-        existingLoans: 'Business loan: Rs 25,000/month, Credit card outstanding: Rs 50,000',
-        creditScore: '680',
-        submittedAt: new Date(Date.now() - 172800000).toISOString(),
-        status: 'pending'
-      },
-      {
-        applicationId: `APP${Date.now() - 259200000}`,
-        fullName: 'Mohammad Ali Khan',
-        email: 'ali.khan@hotmail.com',
-        phoneNumber: '+91 8987654321',
-        alternatePhone: '+91 7876543210',
-        dateOfBirth: '1982-11-08',
-        gender: 'male',
-        aadhaarNumber: '3456 7890 1234',
-        panNumber: 'KLMNO9012P',
-        currentAddress: '456, Old City, Hyderabad, Telangana',
-        permanentAddress: '789, Charminar Area, Hyderabad, Telangana',
-        city: 'Hyderabad',
-        state: 'Telangana',
-        pincode: '500002',
-        applicationType: 'home_loan',
-        applicationAmount: '2500000',
-        purpose: 'Purchase of 2BHK apartment in Gachibowli area',
-        employmentType: 'self_employed',
-        companyName: 'Khan Motors',
-        designation: 'Proprietor',
-        monthlyIncome: '120000',
-        workExperience: '12',
-        bankAccountNumber: '3456789012345678',
-        ifscCode: 'SBIN0003456',
-        bankName: 'State Bank of India',
-        existingLoans: 'No existing loans',
-        creditScore: '720',
-        submittedAt: new Date(Date.now() - 259200000).toISOString(),
-        status: 'approved'
-      },
-      {
-        applicationId: `APP${Date.now() - 345600000}`,
-        fullName: 'Sneha Reddy',
-        email: 'sneha.reddy@gmail.com',
-        phoneNumber: '+91 7654321098',
-        alternatePhone: '',
-        dateOfBirth: '1995-01-30',
-        gender: 'female',
-        aadhaarNumber: '4567 8901 2345',
-        panNumber: 'PQRST3456U',
-        currentAddress: '321, Brigade Road, Bangalore, Karnataka',
-        permanentAddress: '654, Koramangala, Bangalore, Karnataka',
-        city: 'Bangalore',
-        state: 'Karnataka',
-        pincode: '560001',
-        applicationType: 'credit_card',
-        applicationAmount: '200000',
-        purpose: 'Premium credit card for international travel and shopping',
-        employmentType: 'salaried',
-        companyName: 'Wipro Limited',
-        designation: 'Technical Lead',
-        monthlyIncome: '95000',
-        workExperience: '6',
-        bankAccountNumber: '4567890123456789',
-        ifscCode: 'AXIS0004567',
-        bankName: 'Axis Bank',
-        existingLoans: 'Education loan: Rs 8,000/month',
-        creditScore: '780',
-        submittedAt: new Date(Date.now() - 345600000).toISOString(),
-        status: 'rejected'
-      }
-    ];
+  // Check if admin is authenticated
+  const adminToken = localStorage.getItem('adminToken');
+  if (!adminToken) {
+  toast({
+  title: "Authentication Required",
+  description: "Please log in to access the dashboard.",
+  variant: "destructive",
+  });
+  router.push('/admin/login');
+  return;
+  }
     
-    // Load applications from localStorage or use mock data
-    const storedApplications = JSON.parse(localStorage.getItem('fraudDetectionApplications') || '[]');
-    let applicationsToUse = storedApplications.length > 0 ? storedApplications : mockApplications;
-    
-    // Store mock data if none exists
-    if (storedApplications.length === 0) {
-      localStorage.setItem('fraudDetectionApplications', JSON.stringify(mockApplications));
-    }
-    
-    const analyzedApplications = applicationsToUse.map(generateFraudAnalysis);
-    setApplications(analyzedApplications);
-    
-    // Check for saved theme preference
-    const savedTheme = localStorage.getItem('theme');
-    if (savedTheme === 'dark') {
-      setIsDarkMode(true);
-      document.documentElement.classList.add('dark');
-    }
+  // Check for saved theme preference
+  const savedTheme = localStorage.getItem('theme');
+  if (savedTheme === 'dark') {
+  setIsDarkMode(true);
+  document.documentElement.classList.add('dark');
+  }
 
-    // Real-time clock
-    const clockInterval = setInterval(() => {
-      setCurrentTime(new Date());
-    }, 1000);
+  // Fetch real applications from backend
+  fetchApplications();
 
-    return () => {
-      clearInterval(clockInterval);
-    };
+  // Real-time clock
+  const clockInterval = setInterval(() => {
+  setCurrentTime(new Date());
+  }, 1000);
+
+  return () => {
+  clearInterval(clockInterval);
+  };
   }, []);
 
   const toggleTheme = () => {
@@ -425,59 +428,53 @@ export default function Dashboard() {
           <div className="space-y-6">
             {/* Stats Overview */}
             <div className="grid md:grid-cols-4 gap-6">
-              <Card className="bg-white border border-gray-200 shadow-sm">
-                <CardContent className="p-6">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-medium text-gray-600">Total Applications</p>
-                      <p className="text-2xl font-bold text-gray-900">{applications.length}</p>
-                    </div>
-                    <FileText className="h-8 w-8 text-blue-600" />
-                  </div>
-                </CardContent>
-              </Card>
+            <Card className="bg-white border border-gray-200 shadow-sm">
+            <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+            <div>
+            <p className="text-sm font-medium text-gray-600">Total Applications</p>
+            <p className="text-2xl font-bold text-gray-900">{stats.total}</p>
+            </div>
+            <FileText className="h-8 w-8 text-blue-600" />
+            </div>
+            </CardContent>
+            </Card>
               
-              <Card className="bg-white border border-gray-200 shadow-sm">
-                <CardContent className="p-6">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-medium text-gray-600">Approved</p>
-                      <p className="text-2xl font-bold text-green-600">
-                        {applications.filter(app => app.status === 'approved').length}
-                      </p>
-                    </div>
-                    <CheckCircle2 className="h-8 w-8 text-green-600" />
-                  </div>
-                </CardContent>
-              </Card>
+            <Card className="bg-white border border-gray-200 shadow-sm">
+            <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+            <div>
+            <p className="text-sm font-medium text-gray-600">Approved</p>
+            <p className="text-2xl font-bold text-green-600">{stats.approved}</p>
+            </div>
+            <CheckCircle2 className="h-8 w-8 text-green-600" />
+            </div>
+            </CardContent>
+            </Card>
               
-              <Card className="bg-white border border-gray-200 shadow-sm">
-                <CardContent className="p-6">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-medium text-gray-600">High Risk</p>
-                      <p className="text-2xl font-bold text-red-600">
-                        {applications.filter(app => app.riskLevel === 'high' || app.riskLevel === 'critical').length}
-                      </p>
-                    </div>
-                    <AlertTriangle className="h-8 w-8 text-red-600" />
-                  </div>
-                </CardContent>
-              </Card>
+            <Card className="bg-white border border-gray-200 shadow-sm">
+            <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+            <div>
+            <p className="text-sm font-medium text-gray-600">High Risk</p>
+            <p className="text-2xl font-bold text-red-600">{stats.highRisk}</p>
+            </div>
+            <AlertTriangle className="h-8 w-8 text-red-600" />
+            </div>
+            </CardContent>
+            </Card>
               
-              <Card className="bg-white border border-gray-200 shadow-sm">
-                <CardContent className="p-6">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-medium text-gray-600">Pending Review</p>
-                      <p className="text-2xl font-bold text-yellow-600">
-                        {applications.filter(app => app.status === 'pending').length}
-                      </p>
-                    </div>
-                    <Clock className="h-8 w-8 text-yellow-600" />
-                  </div>
-                </CardContent>
-              </Card>
+            <Card className="bg-white border border-gray-200 shadow-sm">
+            <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+            <div>
+            <p className="text-sm font-medium text-gray-600">Pending Review</p>
+            <p className="text-2xl font-bold text-yellow-600">{stats.pending}</p>
+            </div>
+            <Clock className="h-8 w-8 text-yellow-600" />
+            </div>
+            </CardContent>
+            </Card>
             </div>
 
             {/* Main Applications Management */}
@@ -521,11 +518,10 @@ export default function Dashboard() {
                       <SelectValue placeholder="Filter by status" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="all">All Status</SelectItem>
-                      <SelectItem value="pending">Pending</SelectItem>
-                      <SelectItem value="approved">Approved</SelectItem>
-                      <SelectItem value="rejected">Rejected</SelectItem>
-                      <SelectItem value="under_review">Under Review</SelectItem>
+                    <SelectItem value="all">All Status</SelectItem>
+                    <SelectItem value="pending">Pending</SelectItem>
+                    <SelectItem value="approved">Approved</SelectItem>
+                    <SelectItem value="rejected">Rejected</SelectItem>
                     </SelectContent>
                   </Select>
                   <Select value={riskFilter} onValueChange={setRiskFilter}>
@@ -544,7 +540,43 @@ export default function Dashboard() {
 
                 {/* Applications List */}
                 <div className="space-y-4">
-                  {filteredApplications.length === 0 ? (
+                {isLoading ? (
+                <div className="space-y-4">
+                {Array.from({ length: 3 }).map((_, i) => (
+                <Card key={i} className="bg-white border border-gray-200 shadow-sm">
+                <CardContent className="p-6">
+                <div className="animate-pulse">
+                <div className="flex items-start justify-between mb-4">
+                <div className="flex items-center gap-3">
+                <div className="h-12 w-12 bg-gray-200 rounded-full"></div>
+                <div>
+                <div className="h-5 bg-gray-200 rounded w-32 mb-2"></div>
+                <div className="h-3 bg-gray-200 rounded w-24"></div>
+                </div>
+                </div>
+                <div className="flex gap-2">
+                <div className="h-6 bg-gray-200 rounded w-16"></div>
+                <div className="h-6 bg-gray-200 rounded w-20"></div>
+                </div>
+                </div>
+                <div className="grid md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                <div className="h-4 bg-gray-200 rounded w-full"></div>
+                <div className="h-4 bg-gray-200 rounded w-3/4"></div>
+                <div className="h-4 bg-gray-200 rounded w-2/3"></div>
+                </div>
+                <div className="space-y-2">
+                <div className="h-4 bg-gray-200 rounded w-full"></div>
+                <div className="h-4 bg-gray-200 rounded w-3/4"></div>
+                <div className="h-4 bg-gray-200 rounded w-2/3"></div>
+                </div>
+                </div>
+                </div>
+                </CardContent>
+                </Card>
+                ))}
+                </div>
+                ) : filteredApplications.length === 0 ? (
                     <div className="text-center py-12">
                       <Users className="h-12 w-12 text-gray-400 mx-auto mb-4" />
                       <h3 className="text-lg font-medium text-gray-900 mb-2">No applications found</h3>
@@ -577,34 +609,34 @@ export default function Dashboard() {
 
                               {/* Contact & Application Details */}
                               <div className="grid md:grid-cols-2 gap-4 mb-4">
-                                <div className="space-y-2">
-                                  <div className="flex items-center gap-2 text-sm">
-                                    <Mail className="h-4 w-4 text-gray-400" />
-                                    <span className="text-gray-600">{app.email}</span>
-                                  </div>
-                                  <div className="flex items-center gap-2 text-sm">
-                                    <Phone className="h-4 w-4 text-gray-400" />
-                                    <span className="text-gray-600">{app.phoneNumber}</span>
-                                  </div>
-                                  <div className="flex items-center gap-2 text-sm">
-                                    <MapPin className="h-4 w-4 text-gray-400" />
-                                    <span className="text-gray-600">{app.city}, {app.state}</span>
-                                  </div>
-                                </div>
-                                <div className="space-y-2">
-                                  <div className="flex items-center gap-2 text-sm">
-                                    <Building className="h-4 w-4 text-gray-400" />
-                                    <span className="text-gray-600">{app.applicationType} - ₹{app.applicationAmount}</span>
-                                  </div>
-                                  <div className="flex items-center gap-2 text-sm">
-                                    <CreditCard className="h-4 w-4 text-gray-400" />
-                                    <span className="text-gray-600">Aadhaar: {app.aadhaarNumber}</span>
-                                  </div>
-                                  <div className="flex items-center gap-2 text-sm">
-                                    <Calendar className="h-4 w-4 text-gray-400" />
-                                    <span className="text-gray-600">{formatDate(app.submittedAt)}</span>
-                                  </div>
-                                </div>
+                              <div className="space-y-2">
+                              <div className="flex items-center gap-2 text-sm">
+                              <Mail className="h-4 w-4 text-gray-400" />
+                              <span className="text-gray-600">{app.email}</span>
+                              </div>
+                              <div className="flex items-center gap-2 text-sm">
+                              <Phone className="h-4 w-4 text-gray-400" />
+                              <span className="text-gray-600">{app.phoneNumber}</span>
+                              </div>
+                              <div className="flex items-center gap-2 text-sm">
+                              <MapPin className="h-4 w-4 text-gray-400" />
+                              <span className="text-gray-600">{app.address?.city}, {app.address?.state}</span>
+                              </div>
+                              </div>
+                              <div className="space-y-2">
+                              <div className="flex items-center gap-2 text-sm">
+                              <Building className="h-4 w-4 text-gray-400" />
+                              <span className="text-gray-600">{app.loanType} - ₹{app.loanAmount?.toLocaleString()}</span>
+                              </div>
+                              <div className="flex items-center gap-2 text-sm">
+                              <CreditCard className="h-4 w-4 text-gray-400" />
+                              <span className="text-gray-600">Monthly Income: ₹{app.monthlyIncome?.toLocaleString()}</span>
+                              </div>
+                              <div className="flex items-center gap-2 text-sm">
+                              <Calendar className="h-4 w-4 text-gray-400" />
+                              <span className="text-gray-600">{formatDate(app.createdAt)}</span>
+                              </div>
+                              </div>
                               </div>
 
                               {/* Verification Status */}
@@ -645,10 +677,10 @@ export default function Dashboard() {
                               </div>
 
                               <div className="space-y-2 mb-4">
-                                <div className="text-xs text-gray-500">Employment: {app.employmentType}</div>
-                                <div className="text-xs text-gray-500">Income: ₹{app.monthlyIncome}/month</div>
-                                <div className="text-xs text-gray-500">Company: {app.companyName || 'Not specified'}</div>
-                                <div className="text-xs text-gray-500">Credit Score: {app.creditScore || 'Not available'}</div>
+                              <div className="text-xs text-gray-500">Loan Type: {app.loanType}</div>
+                              <div className="text-xs text-gray-500">Income: ₹{app.monthlyIncome?.toLocaleString()}/month</div>
+                              <div className="text-xs text-gray-500">Purpose: {app.purpose}</div>
+                              <div className="text-xs text-gray-500">DOB: {new Date(app.dateOfBirth).toLocaleDateString()}</div>
                               </div>
 
                               {/* Action Buttons */}
@@ -818,13 +850,13 @@ export default function Dashboard() {
 
             {/* Navigation */}
             <nav className="space-y-2 flex-1">
-              {[
-                { id: 'home', label: 'Applications', icon: Home, badge: applications.filter(app => app.status === 'pending').length || null },
-                { id: 'analytics', label: 'Analytics', icon: BarChart3, badge: null },
-                { id: 'history', label: 'History', icon: History, badge: null },
-                { id: 'alerts', label: 'Alerts', icon: Bell, badge: applications.filter(app => app.riskLevel === 'critical').length || null },
-                { id: 'settings', label: 'Settings', icon: Settings, badge: null }
-              ].map((item) => (
+            {[
+            { id: 'home', label: 'Applications', icon: Home, badge: stats.pending || null },
+            { id: 'analytics', label: 'Analytics', icon: BarChart3, badge: null },
+            { id: 'history', label: 'History', icon: History, badge: null },
+            { id: 'alerts', label: 'Alerts', icon: Bell, badge: stats.highRisk || null },
+            { id: 'settings', label: 'Settings', icon: Settings, badge: null }
+            ].map((item) => (
                 <Button
                   key={item.id}
                   variant={activeTab === item.id ? 'default' : 'ghost'}

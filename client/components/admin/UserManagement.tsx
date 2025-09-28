@@ -20,7 +20,9 @@ import {
   Mail,
   Calendar,
   FileText,
-  Loader2
+  Loader2,
+  CreditCard,
+  IndianRupee
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -28,6 +30,9 @@ import { Skeleton } from '@/components/ui/skeleton';
 export default function UserManagement() {
   const [users, setUsers] = useState<User[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [selectedUser, setSelectedUser] = useState<User | null>(null);
+  const [isUserModalOpen, setIsUserModalOpen] = useState(false);
+  const [isLoadingUserDetails, setIsLoadingUserDetails] = useState(false);
   const [pagination, setPagination] = useState({
     current: 1,
     pages: 1,
@@ -72,6 +77,26 @@ export default function UserManagement() {
       [key]: value,
       ...(key !== 'page' && { page: 1 })
     }));
+  };
+
+  const handleViewUserApplications = async (user: User) => {
+    try {
+      setIsLoadingUserDetails(true);
+      setIsUserModalOpen(true);
+      
+      const response = await adminAPI.users.getUserDetails(user._id);
+      if (response.success && response.data) {
+        setSelectedUser(response.data.user);
+      }
+    } catch (error: any) {
+      toast({
+        title: "Error Loading User Details",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoadingUserDetails(false);
+    }
   };
 
   const formatDate = (dateString: string) => {
@@ -148,6 +173,7 @@ export default function UserManagement() {
                   <TableHead>Registration Date</TableHead>
                   <TableHead>Applications</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead>Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -178,6 +204,17 @@ export default function UserManagement() {
                       <Badge className={user.isVerified ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}>
                         {user.isVerified ? 'Verified' : 'Pending'}
                       </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleViewUserApplications(user)}
+                        className="flex items-center gap-1"
+                      >
+                        <Eye className="h-3 w-3" />
+                        View Applications
+                      </Button>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -210,6 +247,161 @@ export default function UserManagement() {
           </Button>
         </div>
       )}
+
+      {/* User Applications Modal */}
+      <Dialog open={isUserModalOpen} onOpenChange={setIsUserModalOpen}>
+        <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Users className="h-5 w-5" />
+              User Applications
+            </DialogTitle>
+            <DialogDescription>
+              {selectedUser ? `Applications for ${selectedUser.name}` : 'Loading user details...'}
+            </DialogDescription>
+          </DialogHeader>
+          
+          {isLoadingUserDetails ? (
+            <div className="flex justify-center py-8">
+              <Loader2 className="h-8 w-8 animate-spin" />
+            </div>
+          ) : selectedUser ? (
+            <div className="space-y-6">
+              {/* User Info Header */}
+              <Card>
+                <CardContent className="pt-6">
+                  <div className="flex items-start justify-between">
+                    <div className="space-y-2">
+                      <h3 className="text-lg font-semibold">{selectedUser.name}</h3>
+                      <div className="flex items-center text-sm text-gray-500">
+                        <Mail className="h-3 w-3 mr-1" />
+                        {selectedUser.email}
+                      </div>
+                      <div className="flex items-center text-sm text-gray-500">
+                        <Calendar className="h-3 w-3 mr-1" />
+                        Joined {formatDate(selectedUser.createdAt)}
+                      </div>
+                    </div>
+                    <div className="text-right space-y-2">
+                      <Badge className={selectedUser.isVerified ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}>
+                        {selectedUser.isVerified ? 'Verified' : 'Pending Verification'}
+                      </Badge>
+                      <div className="text-sm text-gray-500">
+                        Total Applications: {selectedUser.applications?.length || 0}
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Applications List */}
+              {selectedUser.applications && selectedUser.applications.length > 0 ? (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <FileText className="h-4 w-4" />
+                      Applications ({selectedUser.applications.length})
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-4">
+                      {selectedUser.applications.map((application) => (
+                        <div key={application._id} className="border rounded-lg p-4">
+                          <div className="flex items-start justify-between mb-3">
+                            <div>
+                              <h4 className="font-medium">#{application.applicationId}</h4>
+                              <p className="text-sm text-gray-600 capitalize">
+                                {application.loanType} loan • {application.purpose}
+                              </p>
+                            </div>
+                            <Badge className={
+                              application.status === 'approved' ? 'bg-green-100 text-green-800' :
+                              application.status === 'rejected' ? 'bg-red-100 text-red-800' :
+                              'bg-yellow-100 text-yellow-800'
+                            }>
+                              {application.status}
+                            </Badge>
+                          </div>
+                          
+                          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                            <div>
+                              <span className="text-gray-500">Loan Amount</span>
+                              <div className="flex items-center">
+                                <IndianRupee className="h-3 w-3" />
+                                {application.loanAmount.toLocaleString()}
+                              </div>
+                            </div>
+                            <div>
+                              <span className="text-gray-500">Monthly Income</span>
+                              <div className="flex items-center">
+                                <IndianRupee className="h-3 w-3" />
+                                {application.monthlyIncome.toLocaleString()}
+                              </div>
+                            </div>
+                            <div>
+                              <span className="text-gray-500">Applied On</span>
+                              <div>{formatDate(application.createdAt)}</div>
+                            </div>
+                            <div>
+                              <span className="text-gray-500">Contact</span>
+                              <div>{application.phoneNumber}</div>
+                            </div>
+                          </div>
+                          
+                          {application.status !== 'pending' && (
+                            <div className="mt-3 pt-3 border-t">
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                                {application.reviewedAt && (
+                                  <div>
+                                    <span className="text-gray-500">Reviewed On</span>
+                                    <div>{formatDate(application.reviewedAt)}</div>
+                                  </div>
+                                )}
+                                {application.approvedAmount && (
+                                  <div>
+                                    <span className="text-gray-500">Approved Amount</span>
+                                    <div className="flex items-center font-medium text-green-600">
+                                      <IndianRupee className="h-3 w-3" />
+                                      {application.approvedAmount.toLocaleString()}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                              {(application.reason || application.comments) && (
+                                <div className="mt-2">
+                                  <span className="text-gray-500">Notes</span>
+                                  <p className="text-sm mt-1">
+                                    {application.reason && <span className="font-medium">{application.reason}. </span>}
+                                    {application.comments}
+                                  </p>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              ) : (
+                <Card>
+                  <CardContent className="pt-6">
+                    <div className="text-center py-8 text-gray-500">
+                      <FileText className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                      <p>No applications found</p>
+                      <p className="text-sm">This user hasn't submitted any loan applications yet.</p>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+            </div>
+          ) : (
+            <div className="text-center py-8 text-gray-500">
+              <p>Failed to load user details</p>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

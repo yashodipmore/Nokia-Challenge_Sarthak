@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAdminAuth } from '@/hooks/useAdminAuth';
 import { Button } from '@/components/ui/button';
@@ -27,6 +27,29 @@ export default function AdminLogin({ onSuperAdminSetup }: AdminLoginProps) {
   const { login } = useAdminAuth();
   const { toast } = useToast();
   const router = useRouter();
+
+  // Handle browser extension attributes that cause hydration warnings
+  useEffect(() => {
+    // Suppress hydration warnings for browser extension attributes
+    const handleConsoleWarn = (message: any) => {
+      if (typeof message === 'string' && message.includes('Extra attributes from the server')) {
+        return;
+      }
+    };
+    
+    // This helps reduce noise from browser extensions
+    const originalWarn = console.warn;
+    console.warn = (...args) => {
+      if (args[0]?.includes?.('foxified') || args[0]?.includes?.('Extra attributes')) {
+        return;
+      }
+      originalWarn.apply(console, args);
+    };
+
+    return () => {
+      console.warn = originalWarn;
+    };
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -111,6 +134,7 @@ export default function AdminLogin({ onSuperAdminSetup }: AdminLoginProps) {
                   required
                   disabled={isLoading}
                   className="h-11"
+                  autoComplete="username"
                 />
               </div>
 
@@ -127,6 +151,7 @@ export default function AdminLogin({ onSuperAdminSetup }: AdminLoginProps) {
                     required
                     disabled={isLoading}
                     className="h-11 pr-10"
+                    autoComplete="current-password"
                   />
                   <Button
                     type="button"

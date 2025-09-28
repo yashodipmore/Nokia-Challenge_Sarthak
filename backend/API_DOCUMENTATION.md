@@ -166,11 +166,16 @@ GET /admin/users?page=1&limit=10&search=john
 Authorization: Bearer <admin_token>
 ```
 
-### 2. Get User Details
+### 2. Get User Details (with Applications)
 ```http
 GET /admin/users/{userId}
 Authorization: Bearer <admin_token>
 ```
+
+**Response includes:**
+- User profile information
+- All applications submitted by the user
+- Application summary statistics
 
 ### 3. Dashboard Statistics
 ```http
