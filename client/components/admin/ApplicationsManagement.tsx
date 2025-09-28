@@ -350,10 +350,11 @@ export default function ApplicationsManagement() {
       const response = await adminAPI.applications.getAllApplications(queryFilters);
       
       if (response.success && response.data) {
-        setApplications(response.data.applications);
-        setPagination(response.data.pagination);
+        setApplications(response.data.applications || []);
+        setPagination(response.data.pagination || { current: 1, pages: 1, total: 0 });
       }
     } catch (error: any) {
+      console.error('Error fetching applications:', error);
       toast({
         title: "Error Loading Applications",
         description: error.message,

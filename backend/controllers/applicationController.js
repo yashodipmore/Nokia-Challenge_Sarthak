@@ -134,17 +134,25 @@ export const getApplicationById = async (req, res) => {
 // Admin: Get all applications
 export const getAllApplications = async (req, res) => {
   try {
-    const { status, page = 1, limit = 10 } = req.query;
+    const { status, page = 1, limit = 10, search } = req.query;
     
     const filter = {};
     if (status && ['pending', 'approved', 'rejected'].includes(status)) {
       filter.status = status;
     }
+    
+    // Add search functionality
+    if (search) {
+      filter.$or = [
+        { fullName: { $regex: search, $options: 'i' } },
+        { email: { $regex: search, $options: 'i' } },
+        { applicationId: { $regex: search, $options: 'i' } }
+      ];
+    }
 
     const applications = await Application.find(filter)
       .populate('userId', 'name email')
       .populate('reviewedBy', 'fullName')
-      .select('-address') // Hide full address in listing
       .sort({ createdAt: -1 })
       .limit(limit * 1)
       .skip((page - 1) * limit);
@@ -153,11 +161,13 @@ export const getAllApplications = async (req, res) => {
 
     res.json({
       success: true,
-      applications,
-      pagination: {
-        current: page,
-        pages: Math.ceil(total / limit),
-        total
+      data: {
+        applications,
+        pagination: {
+          current: parseInt(page),
+          pages: Math.ceil(total / limit),
+          total
+        }
       }
     });
 
@@ -216,7 +226,14 @@ export const updateApplicationStatus = async (req, res) => {
       });
     }
 
-    const application = await Application.findOne({ applicationId });
+    // Find by _id or applicationId
+    const application = await Application.findOne({ 
+      $or: [
+        { _id: applicationId },
+        { applicationId: applicationId }
+      ]
+    });
+    
     if (!application) {
       return res.status(404).json({ 
         success: false, 
@@ -253,12 +270,15 @@ export const updateApplicationStatus = async (req, res) => {
     res.json({
       success: true,
       message: `Application ${decision} successfully`,
-      application: {
-        applicationId: application.applicationId,
-        status: application.status,
-        finalDecision: application.finalDecision,
-        reviewedBy: application.reviewedBy,
-        reviewedAt: application.reviewedAt
+      data: {
+        application: {
+          _id: application._id,
+          applicationId: application.applicationId,
+          status: application.status,
+          finalDecision: application.finalDecision,
+          reviewedBy: application.reviewedBy,
+          reviewedAt: application.reviewedAt
+        }
       }
     });
 
